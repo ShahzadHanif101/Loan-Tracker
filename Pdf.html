@@ -1,0 +1,126 @@
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+  async function downloadPDF() {
+    if (!window.currentReport) {
+      alert("Please load records first.");
+      return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF();
+
+    const r = window.currentReport;
+    let y = 20;
+
+    // ===== Header =====
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(20);
+    pdf.setTextColor(37, 99, 235);
+    // Ali Statement
+    pdf.text(`${r.person} Statement`, 105, y, {
+      align: "center",
+    });
+
+    y += 9;
+
+    // Period: 1 September to 29 September
+    const fromDate = new Date(r.from);
+    const toDate = new Date(r.to);
+
+    const options = {
+      day: "numeric",
+      month: "long",
+    };
+
+    const periodText = `Period: ${fromDate.toLocaleDateString(
+      "en-GB",
+      options,
+    )} to ${toDate.toLocaleDateString("en-GB", options)}`;
+
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(11);
+
+    pdf.text(periodText, 105, y, {
+      align: "center",
+    });
+
+    y += 12;
+    pdf.line(15, y, 195, y);
+
+    y += 10;
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(13);
+    pdf.text("SUMMARY", 15, y);
+
+    y += 8;
+    pdf.setFontSize(11);
+
+    pdf.setTextColor(190, 24, 93);
+    pdf.text("Given", 18, y);
+    pdf.text(`AED ${formatMoney(r.totalGiven)}`, 190, y, { align: "right" });
+
+    y += 7;
+    pdf.setTextColor(5, 150, 105);
+    pdf.text("Returned", 18, y);
+    pdf.text(`AED ${formatMoney(r.totalReturned)}`, 190, y, { align: "right" });
+
+    y += 7;
+    pdf.setTextColor(37, 99, 235);
+    pdf.text("Outstanding", 18, y);
+    pdf.text(`AED ${formatMoney(r.balance)}`, 190, y, { align: "right" });
+
+    pdf.setTextColor(0, 0, 0);
+
+    y += 10;
+    pdf.line(15, y, 195, y);
+
+    y += 8;
+    pdf.setFontSize(13);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("TRANSACTIONS", 15, y);
+
+    y += 8;
+
+    r.transactions.forEach((tx) => {
+      if (y > 265) {
+        pdf.addPage();
+        y = 20;
+      }
+
+      pdf.setFontSize(10);
+      pdf.setFont("helvetica", "bold");
+      pdf.text(tx.id, 15, y);
+      pdf.text(`AED ${formatMoney(tx.amount)}`, 190, y, { align: "right" });
+
+      y += 5;
+
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`${tx.date} • ${tx.type}`, 15, y);
+
+      y += 5;
+
+      if (tx.notes) {
+        pdf.text(`Notes: ${tx.notes}`, 15, y);
+        y += 5;
+      }
+
+      pdf.setDrawColor(220);
+      pdf.line(15, y, 195, y);
+
+      y += 6;
+    });
+
+    pdf.setFontSize(9);
+    pdf.setTextColor(120);
+
+    pdf.text(`Generated: ${new Date().toLocaleDateString("en-GB")}`, 105, 285, {
+      align: "center",
+    });
+
+    const fileName = `${r.person.replace(/\s+/g, "_")}'s_Statement.pdf`;
+
+    pdf.save(fileName);
+  }
+</script>

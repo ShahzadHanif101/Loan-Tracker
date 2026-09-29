@@ -1,0 +1,665 @@
+<script>
+  // =====================================================
+  // GLOBAL
+  // =====================================================
+
+  let people = [];
+  window.currentReport = null;
+
+  // =====================================================
+  // PAGE LOAD
+  // =====================================================
+
+  window.onload = function () {
+    loadPeople();
+
+    setDefaultDates();
+  };
+
+  // =====================================================
+  // DEFAULT DATES
+  // =====================================================
+
+  function setDefaultDates() {
+    const today = new Date();
+
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    document.getElementById("fromDate").value = formatDateForInput(firstDay);
+
+    document.getElementById("toDate").value = formatDateForInput(today);
+
+    document.getElementById("addDate").value = formatDateForInput(today);
+  }
+
+  // =====================================================
+  // DATE FORMAT
+  // =====================================================
+
+  function formatDateForInput(date) {
+    const year = date.getFullYear();
+
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  }
+
+  // =====================================================
+  // LOAD PEOPLE
+  // =====================================================
+
+  function loadPeople() {
+    google.script.run
+
+      .withSuccessHandler(function (list) {
+        people = list;
+
+        const personSelect = document.getElementById("person");
+
+        const addPersonSelect = document.getElementById("addPerson");
+
+        personSelect.innerHTML = '<option value="">Select a person</option>';
+
+        addPersonSelect.innerHTML = "";
+
+        list.forEach(function (p) {
+          personSelect.innerHTML += `<option value="${escapeHtml(p.name)}">
+            ${escapeHtml(p.name)}
+           </option>`;
+
+          addPersonSelect.innerHTML += `<option value="${escapeHtml(p.name)}">
+            ${escapeHtml(p.name)}
+           </option>`;
+        });
+      })
+
+      .withFailureHandler(function (error) {
+        alert("Unable to load people: " + error.message);
+      })
+
+      .getPeople();
+  }
+
+  // =====================================================
+  // SHOW ADD FORM
+  // =====================================================
+
+  function showAddForm() {
+    document.getElementById("dashboard").style.display = "none";
+
+    document.getElementById("addPage").style.display = "block";
+
+    document.getElementById("formTitle").textContent = "➕ Add Transaction";
+
+    document.getElementById("formSubtitle").textContent = "New loan record";
+
+    document.getElementById("editId").value = "";
+
+    document.getElementById("saveButton").textContent = "Save Transaction";
+
+    const selectedPerson = document.getElementById("person").value;
+
+    if (selectedPerson) {
+      document.getElementById("addPerson").value = selectedPerson;
+    }
+  }
+
+  // =====================================================
+  // EDIT TRANSACTION
+  // =====================================================
+
+  function editTransaction(id) {
+    document.getElementById("dashboard").style.display = "none";
+
+    document.getElementById("addPage").style.display = "block";
+
+    document.getElementById("formTitle").textContent = "✏️ Edit Transaction";
+
+    document.getElementById("formSubtitle").textContent = "Update loan record";
+
+    document.getElementById("saveButton").textContent = "Save Changes";
+
+    document.getElementById("editId").value = id;
+
+    // Show loading state
+
+    document.getElementById("addPerson").disabled = true;
+
+    document.getElementById("addDate").disabled = true;
+
+    document.getElementById("addType").disabled = true;
+
+    document.getElementById("addAmount").disabled = true;
+
+    document.getElementById("addNotes").disabled = true;
+
+    google.script.run
+
+      .withSuccessHandler(function (data) {
+        if (!data) {
+          alert("Transaction could not be found.");
+
+          goDashboard();
+
+          return;
+        }
+
+        document.getElementById("addPerson").value = data.person;
+
+        document.getElementById("addDate").value = data.date;
+
+        document.getElementById("addType").value = data.type;
+
+        document.getElementById("addAmount").value = data.amount;
+
+        document.getElementById("addNotes").value = data.notes;
+
+        document.getElementById("addPerson").disabled = false;
+
+        document.getElementById("addDate").disabled = false;
+
+        document.getElementById("addType").disabled = false;
+
+        document.getElementById("addAmount").disabled = false;
+
+        document.getElementById("addNotes").disabled = false;
+      })
+
+      .withFailureHandler(function (error) {
+        alert("Unable to load transaction: " + error.message);
+
+        goDashboard();
+      })
+
+      .getTransactionById(id);
+  }
+
+  // =====================================================
+  // RETURN TO DASHBOARD
+  // =====================================================
+
+  function goDashboard() {
+    document.getElementById("dashboard").style.display = "block";
+
+    document.getElementById("addPage").style.display = "none";
+
+    clearTransactionForm();
+  }
+
+  // =====================================================
+  // CLEAR FORM
+  // =====================================================
+
+  function clearTransactionForm() {
+    document.getElementById("editId").value = "";
+
+    document.getElementById("addAmount").value = "";
+
+    document.getElementById("addNotes").value = "";
+
+    document.getElementById("addType").value = "Given";
+
+    document.getElementById("addPerson").disabled = false;
+
+    document.getElementById("addDate").disabled = false;
+
+    document.getElementById("addType").disabled = false;
+
+    document.getElementById("addAmount").disabled = false;
+
+    document.getElementById("addNotes").disabled = false;
+
+    document.getElementById("formTitle").textContent = "➕ Add Transaction";
+
+    document.getElementById("formSubtitle").textContent = "New loan record";
+
+    document.getElementById("saveButton").textContent = "Save Transaction";
+  }
+
+  // =====================================================
+  // SAVE TRANSACTION
+  // =====================================================
+
+  function saveTransaction() {
+    const editId = document.getElementById("editId").value;
+
+    const person = document.getElementById("addPerson").value;
+
+    const date = document.getElementById("addDate").value;
+
+    const type = document.getElementById("addType").value;
+
+    const amount = document.getElementById("addAmount").value;
+
+    const notes = document.getElementById("addNotes").value.trim();
+
+    // Validation
+
+    if (!person) {
+      alert("Please select a person.");
+
+      return;
+    }
+
+    if (!date) {
+      alert("Please select a date.");
+
+      return;
+    }
+
+    if (!amount || Number(amount) <= 0) {
+      alert("Please enter a valid amount.");
+
+      return;
+    }
+
+    const button = document.getElementById("saveButton");
+
+    button.disabled = true;
+
+    button.textContent = editId ? "Saving Changes..." : "Saving...";
+
+    // EDIT
+
+    if (editId) {
+      google.script.run
+
+        .withSuccessHandler(function () {
+          button.disabled = false;
+
+          alert("Transaction updated successfully.");
+
+          goDashboard();
+
+          viewRecords();
+        })
+
+        .withFailureHandler(function (error) {
+          button.disabled = false;
+
+          button.textContent = "Save Changes";
+
+          alert("Unable to update transaction: " + error.message);
+        })
+
+        .updateTransaction({
+          id: editId,
+
+          person: person,
+
+          date: date,
+
+          type: type,
+
+          amount: amount,
+
+          notes: notes,
+        });
+
+      return;
+    }
+
+    // NEW TRANSACTION
+
+    google.script.run
+
+      .withSuccessHandler(function (response) {
+        button.disabled = false;
+
+        alert("Transaction saved successfully.\n\n" + "ID: " + response.id);
+
+        document.getElementById("person").value = person;
+
+        goDashboard();
+
+        viewRecords();
+      })
+
+      .withFailureHandler(function (error) {
+        button.disabled = false;
+
+        button.textContent = "Save Transaction";
+
+        alert("Unable to save transaction: " + error.message);
+      })
+
+      .saveTransaction({
+        person: person,
+
+        date: date,
+
+        type: type,
+
+        amount: amount,
+
+        notes: notes,
+      });
+  }
+
+  // =====================================================
+  // DELETE TRANSACTION
+  // =====================================================
+
+  function deleteTransaction(id) {
+    const confirmed = confirm(
+      "Delete this transaction?\n\n" +
+        "ID: " +
+        id +
+        "\n\n" +
+        "This action cannot be undone.",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    google.script.run
+
+      .withSuccessHandler(function () {
+        alert("Transaction deleted successfully.");
+
+        viewRecords();
+      })
+
+      .withFailureHandler(function (error) {
+        alert("Unable to delete transaction: " + error.message);
+      })
+
+      .deleteTransaction(id);
+  }
+
+  // =====================================================
+  // VIEW RECORDS
+  // =====================================================
+
+  function viewRecords() {
+    const person = document.getElementById("person").value;
+
+    const from = document.getElementById("fromDate").value;
+
+    const to = document.getElementById("toDate").value;
+
+    if (!person) {
+      alert("Please select a person.");
+
+      return;
+    }
+
+    if (!from || !to) {
+      alert("Please select both dates.");
+
+      return;
+    }
+
+    if (from > to) {
+      alert("From date cannot be after To date.");
+
+      return;
+    }
+
+    const result = document.getElementById("result");
+
+    result.innerHTML = `<div class="loading">
+       Loading records...
+     </div>`;
+
+    google.script.run
+
+      .withSuccessHandler(function (data) {
+        displayRecords(person, data);
+      })
+
+      .withFailureHandler(function (error) {
+        result.innerHTML = `<div class="empty-results">
+
+          <div class="icon">
+            ⚠️
+          </div>
+
+          <div class="title">
+            Unable to load records
+          </div>
+
+          <div class="text">
+            ${escapeHtml(error.message)}
+          </div>
+
+        </div>`;
+      })
+
+      .getTransactions(person, from, to);
+  }
+
+  // =====================================================
+  // DISPLAY RECORDS
+  // =====================================================
+
+  function displayRecords(person, data) {
+    // Save the currently displayed report for PDF
+    window.currentReport = {
+      person: person,
+      from: document.getElementById("fromDate").value,
+      to: document.getElementById("toDate").value,
+      totalGiven: data.totalGiven,
+      totalReturned: data.totalReturned,
+      balance: data.balance,
+      transactions: data.transactions,
+    };
+
+    const result = document.getElementById("result");
+
+    let transactionsHtml = "";
+
+    if (data.transactions && data.transactions.length > 0) {
+      data.transactions.forEach(function (tx) {
+        const typeClass = tx.type === "Given" ? "given" : "returned";
+
+        const notesHtml = tx.notes
+          ? `<div class="notes">
+               ${escapeHtml(tx.notes)}
+             </div>`
+          : "";
+
+        transactionsHtml += `<div class="transaction-card">
+
+
+          <div class="transaction-top">
+
+
+            <div class="transaction-date-area">
+
+              <div class="transaction-date">
+
+                ${escapeHtml(tx.date)}
+
+              </div>
+
+
+              <div class="transaction-id">
+
+                ${escapeHtml(tx.id)}
+
+              </div>
+
+            </div>
+
+
+            <div class="transaction-amount">
+
+              AED ${formatMoney(tx.amount)}
+
+            </div>
+
+
+          </div>
+
+
+          <div class="transaction-type ${typeClass}">
+
+            ${escapeHtml(tx.type)}
+
+          </div>
+
+
+          ${notesHtml}
+
+
+          <div class="transaction-actions">
+
+
+            <button
+              class="action-button edit-button"
+              onclick="editTransaction('${escapeJs(tx.id)}')"
+            >
+
+              ✏️ Edit
+
+            </button>
+
+
+            <button
+              class="action-button delete-button"
+              onclick="deleteTransaction('${escapeJs(tx.id)}')"
+            >
+
+              🗑️ Delete
+
+            </button>
+
+
+          </div>
+
+
+        </div>`;
+      });
+    }
+
+    // Summary
+
+    let emptyHtml = "";
+
+    if (!data.transactions || data.transactions.length === 0) {
+      emptyHtml = `<div class="empty-results">
+
+        <div class="icon">
+          📋
+        </div>
+
+        <div class="title">
+          No transactions found
+        </div>
+
+        <div class="text">
+          No records for
+          ${escapeHtml(person)}
+          in the selected date range.
+        </div>
+
+      </div>`;
+    }
+
+    result.innerHTML = `<div class="summary">
+
+
+      <div class="summary-card given">
+
+        <div class="summary-label">
+          💸 Given
+        </div>
+
+        <div class="summary-value">
+          AED ${formatMoney(data.totalGiven)}
+        </div>
+
+      </div>
+
+
+      <div class="summary-card returned">
+
+        <div class="summary-label">
+          💰 Returned
+        </div>
+
+        <div class="summary-value">
+          AED ${formatMoney(data.totalReturned)}
+        </div>
+
+      </div>
+
+
+      <div class="summary-card balance full">
+
+        <div class="summary-label">
+          Outstanding Balance
+        </div>
+
+        <div class="summary-value">
+          AED ${formatMoney(data.balance)}
+        </div>
+
+      </div>
+
+
+    </div>
+
+<button class="primary" onclick="downloadPDF()">
+  📄 Download PDF
+</button>
+    ${
+      data.transactions && data.transactions.length > 0
+        ? `<div class="section-title">
+           ${escapeHtml(person)}'s Transactions
+         </div>
+
+         ${transactionsHtml}`
+        : emptyHtml
+    }`;
+  }
+
+  // =====================================================
+  // MONEY FORMAT
+  // =====================================================
+
+  function formatMoney(amount) {
+    return Number(amount || 0).toLocaleString("en-AE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  // =====================================================
+  // HTML ESCAPE
+  // =====================================================
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+
+      .replace(/</g, "&lt;")
+
+      .replace(/>/g, "&gt;")
+
+      .replace(/"/g, "&quot;")
+
+      .replace(/'/g, "&#039;");
+  }
+
+  // =====================================================
+  // JAVASCRIPT STRING ESCAPE
+  // =====================================================
+
+  function escapeJs(value) {
+    return String(value ?? "")
+      .replace(/\\/g, "\\\\")
+
+      .replace(/'/g, "\\'")
+
+      .replace(/"/g, '\\"')
+
+      .replace(/\n/g, "\\n")
+
+      .replace(/\r/g, "\\r");
+  }
+</script>
