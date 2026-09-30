@@ -1,126 +1,548 @@
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<html>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-<script>
-  async function downloadPDF() {
-    if (!window.currentReport) {
-      alert("Please load records first.");
-      return;
-    }
+  <script>
+    /* =========================================================
+   LOAN TRACKER — PDF GENERATOR
+   M6 PDF Layout
+   ========================================================= */
 
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF();
-
-    const r = window.currentReport;
-    let y = 20;
-
-    // ===== Header =====
-
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(20);
-    pdf.setTextColor(37, 99, 235);
-    // Ali Statement
-    pdf.text(`${r.person} Statement`, 105, y, {
-      align: "center",
-    });
-
-    y += 9;
-
-    // Period: 1 September to 29 September
-    const fromDate = new Date(r.from);
-    const toDate = new Date(r.to);
-
-    const options = {
-      day: "numeric",
-      month: "long",
-    };
-
-    const periodText = `Period: ${fromDate.toLocaleDateString(
-      "en-GB",
-      options,
-    )} to ${toDate.toLocaleDateString("en-GB", options)}`;
-
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(11);
-
-    pdf.text(periodText, 105, y, {
-      align: "center",
-    });
-
-    y += 12;
-    pdf.line(15, y, 195, y);
-
-    y += 10;
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(13);
-    pdf.text("SUMMARY", 15, y);
-
-    y += 8;
-    pdf.setFontSize(11);
-
-    pdf.setTextColor(190, 24, 93);
-    pdf.text("Given", 18, y);
-    pdf.text(`AED ${formatMoney(r.totalGiven)}`, 190, y, { align: "right" });
-
-    y += 7;
-    pdf.setTextColor(5, 150, 105);
-    pdf.text("Returned", 18, y);
-    pdf.text(`AED ${formatMoney(r.totalReturned)}`, 190, y, { align: "right" });
-
-    y += 7;
-    pdf.setTextColor(37, 99, 235);
-    pdf.text("Outstanding", 18, y);
-    pdf.text(`AED ${formatMoney(r.balance)}`, 190, y, { align: "right" });
-
-    pdf.setTextColor(0, 0, 0);
-
-    y += 10;
-    pdf.line(15, y, 195, y);
-
-    y += 8;
-    pdf.setFontSize(13);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("TRANSACTIONS", 15, y);
-
-    y += 8;
-
-    r.transactions.forEach((tx) => {
-      if (y > 265) {
-        pdf.addPage();
-        y = 20;
+    async function downloadPDF() {
+      if (!window.currentReport) {
+        alert("Please load records first.");
+        return;
       }
 
-      pdf.setFontSize(10);
-      pdf.setFont("helvetica", "bold");
-      pdf.text(tx.id, 15, y);
-      pdf.text(`AED ${formatMoney(tx.amount)}`, 190, y, { align: "right" });
+      const { jsPDF } = window.jspdf;
 
-      y += 5;
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const r = window.currentReport;
+
+      /* =======================================================
+     COLORS
+     ======================================================= */
+
+      const COLORS = {
+        black: [31, 41, 55],
+        darkGray: [75, 85, 99],
+        gray: [107, 114, 128],
+        lightGray: [243, 244, 246],
+        border: [229, 231, 235],
+        white: [255, 255, 255],
+
+        spendBg: [254, 242, 242],
+        spendBorder: [252, 165, 165],
+        spendText: [153, 27, 27],
+
+        receivedBg: [236, 253, 245],
+        receivedBorder: [134, 239, 172],
+        receivedText: [22, 101, 52],
+
+        balanceBg: [239, 246, 255],
+        balanceBorder: [147, 197, 253],
+        balanceText: [29, 78, 216],
+      };
+
+      /* =======================================================
+     HELPERS
+     ======================================================= */
+
+      function money(value) {
+        return Number(value || 0).toLocaleString("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+      }
+
+      function formatPeriodDate(value) {
+        if (!value) return "";
+
+        const date = new Date(value);
+
+        if (isNaN(date.getTime())) {
+          return value;
+        }
+
+        return date.toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "long",
+        });
+      }
+
+      function formatShortDate(value) {
+        if (!value) return "";
+
+        const date = new Date(value);
+
+        if (isNaN(date.getTime())) {
+          return value;
+        }
+
+        return date.toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        });
+      }
+
+      function setTextColor(rgb) {
+        pdf.setTextColor(rgb[0], rgb[1], rgb[2]);
+      }
+
+      function setFillColor(rgb) {
+        pdf.setFillColor(rgb[0], rgb[1], rgb[2]);
+      }
+
+      function setDrawColor(rgb) {
+        pdf.setDrawColor(rgb[0], rgb[1], rgb[2]);
+      }
+
+      function roundedCard(x, y, w, h, fill, border) {
+        setFillColor(fill);
+        setDrawColor(border);
+
+        pdf.setLineWidth(0.4);
+
+        pdf.roundedRect(x, y, w, h, 3, 3, "FD");
+      }
+
+      /* =======================================================
+     PAGE SETTINGS
+     ======================================================= */
+
+      const pageWidth = 210;
+      const pageHeight = 297;
+
+      const margin = 15;
+
+      const contentWidth = pageWidth - margin * 2;
+
+      /* =======================================================
+     HEADER
+     ======================================================= */
+
+      let y = 20;
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(21);
+
+      setTextColor(COLORS.black);
+
+      pdf.text(`${r.person} Statement`, pageWidth / 2, y, { align: "center" });
+
+      y += 8;
 
       pdf.setFont("helvetica", "normal");
-      pdf.text(`${tx.date} • ${tx.type}`, 15, y);
+      pdf.setFontSize(10);
 
-      y += 5;
+      setTextColor(COLORS.gray);
 
-      if (tx.notes) {
-        pdf.text(`Notes: ${tx.notes}`, 15, y);
-        y += 5;
+      pdf.text(
+        `Period: ${formatPeriodDate(r.from)} to ${formatPeriodDate(r.to)}`,
+        pageWidth / 2,
+        y,
+        { align: "center" },
+      );
+
+      y += 9;
+
+      setDrawColor(COLORS.border);
+
+      pdf.setLineWidth(0.5);
+
+      pdf.line(margin, y, pageWidth - margin, y);
+
+      /* =======================================================
+     SUMMARY CARDS
+     ======================================================= */
+
+      y += 9;
+
+      const gap = 4;
+
+      const cardWidth = (contentWidth - gap * 2) / 3;
+
+      const cardHeight = 29;
+
+      // Spend
+      roundedCard(
+        margin,
+        y,
+        cardWidth,
+        cardHeight,
+        COLORS.spendBg,
+        COLORS.spendBorder,
+      );
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(9);
+
+      setTextColor(COLORS.spendText);
+
+      pdf.text("SPEND", margin + 5, y + 8);
+
+      pdf.setFontSize(12);
+
+      pdf.text(`AED ${money(r.totalGiven)}`, margin + 5, y + 19);
+
+      // Received
+      const receivedX = margin + cardWidth + gap;
+
+      roundedCard(
+        receivedX,
+        y,
+        cardWidth,
+        cardHeight,
+        COLORS.receivedBg,
+        COLORS.receivedBorder,
+      );
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(9);
+
+      setTextColor(COLORS.receivedText);
+
+      pdf.text("RECEIVED", receivedX + 5, y + 8);
+
+      pdf.setFontSize(12);
+
+      pdf.text(`AED ${money(r.totalReturned)}`, receivedX + 5, y + 19);
+
+      // Balance
+      const balanceX = margin + (cardWidth + gap) * 2;
+
+      roundedCard(
+        balanceX,
+        y,
+        cardWidth,
+        cardHeight,
+        COLORS.balanceBg,
+        COLORS.balanceBorder,
+      );
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(9);
+
+      setTextColor(COLORS.balanceText);
+
+      pdf.text("BALANCE", balanceX + 5, y + 8);
+
+      pdf.setFontSize(12);
+
+      pdf.text(`AED ${money(r.balance)}`, balanceX + 5, y + 19);
+
+      /* =======================================================
+     TRANSACTIONS TITLE
+     ======================================================= */
+
+      y += cardHeight + 12;
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(13);
+
+      setTextColor(COLORS.black);
+
+      pdf.text("TRANSACTIONS", margin, y);
+
+      y += 7;
+
+      /* =======================================================
+     TABLE SETTINGS
+     ======================================================= */
+
+      const tableX = margin;
+
+      const dateWidth = 30;
+      const transactionWidth = 31;
+      const noteWidth = 83;
+
+      const amountWidth =
+        contentWidth - dateWidth - transactionWidth - noteWidth;
+
+      const headerHeight = 9;
+
+      /* =======================================================
+     TABLE HEADER
+     ======================================================= */
+
+      setFillColor(COLORS.lightGray);
+      setDrawColor(COLORS.border);
+
+      pdf.setLineWidth(0.35);
+
+      pdf.rect(tableX, y, contentWidth, headerHeight, "FD");
+
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(8.5);
+
+      setTextColor(COLORS.darkGray);
+
+      pdf.text("DATE", tableX + 3, y + 6);
+
+      pdf.text("TRANSACTION", tableX + dateWidth + 3, y + 6);
+
+      pdf.text("NOTE", tableX + dateWidth + transactionWidth + 3, y + 6);
+
+      pdf.text(
+        "AMOUNT",
+        tableX + dateWidth + transactionWidth + noteWidth + amountWidth - 3,
+        y + 6,
+        { align: "right" },
+      );
+
+      y += headerHeight;
+
+      /* =======================================================
+     TRANSACTION ROWS
+     ======================================================= */
+
+      const transactions = Array.isArray(r.transactions) ? r.transactions : [];
+
+      transactions.forEach(function (tx) {
+        const dateText = formatShortDate(tx.date);
+
+        const transactionText =
+          String(tx.type || "").toLowerCase() === "given"
+            ? "Spend"
+            : "Received";
+
+        const noteText = tx.notes ? String(tx.notes) : "";
+
+        /* -------------------------------------------------------
+       Calculate wrapped text
+       ------------------------------------------------------- */
+
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(8.5);
+
+        const noteLines = noteText
+          ? pdf.splitTextToSize(noteText, noteWidth - 6)
+          : ["—"];
+
+        const dateLines = pdf.splitTextToSize(dateText, dateWidth - 6);
+
+        const transactionLines = pdf.splitTextToSize(
+          transactionText,
+          transactionWidth - 6,
+        );
+
+        const lineCount = Math.max(
+          noteLines.length,
+          dateLines.length,
+          transactionLines.length,
+          1,
+        );
+
+        const lineHeight = 4.2;
+
+        const rowPadding = 5;
+
+        const rowHeight = Math.max(12, lineCount * lineHeight + rowPadding);
+
+        /* -------------------------------------------------------
+       Page break
+       ------------------------------------------------------- */
+
+        if (y + rowHeight > pageHeight - 18) {
+          pdf.addPage();
+
+          y = 20;
+
+          /* Repeat table header */
+
+          setFillColor(COLORS.lightGray);
+          setDrawColor(COLORS.border);
+
+          pdf.rect(tableX, y, contentWidth, headerHeight, "FD");
+
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(8.5);
+
+          setTextColor(COLORS.darkGray);
+
+          pdf.text("DATE", tableX + 3, y + 6);
+
+          pdf.text("TRANSACTION", tableX + dateWidth + 3, y + 6);
+
+          pdf.text("NOTE", tableX + dateWidth + transactionWidth + 3, y + 6);
+
+          pdf.text(
+            "AMOUNT",
+            tableX + dateWidth + transactionWidth + noteWidth + amountWidth - 3,
+            y + 6,
+            { align: "right" },
+          );
+
+          y += headerHeight;
+        }
+
+        /* -------------------------------------------------------
+       Row background
+       ------------------------------------------------------- */
+
+        setFillColor(COLORS.white);
+        setDrawColor(COLORS.border);
+
+        pdf.rect(tableX, y, contentWidth, rowHeight, "FD");
+
+        /* -------------------------------------------------------
+       Vertical separators
+       ------------------------------------------------------- */
+
+        setDrawColor(COLORS.border);
+
+        pdf.line(tableX + dateWidth, y, tableX + dateWidth, y + rowHeight);
+
+        pdf.line(
+          tableX + dateWidth + transactionWidth,
+          y,
+          tableX + dateWidth + transactionWidth,
+          y + rowHeight,
+        );
+
+        pdf.line(
+          tableX + dateWidth + transactionWidth + noteWidth,
+          y,
+          tableX + dateWidth + transactionWidth + noteWidth,
+          y + rowHeight,
+        );
+
+        /* -------------------------------------------------------
+       DATE
+       ------------------------------------------------------- */
+
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(8.5);
+
+        setTextColor(COLORS.darkGray);
+
+        pdf.text(dateLines, tableX + 3, y + 6);
+
+        /* -------------------------------------------------------
+       TRANSACTION
+       ------------------------------------------------------- */
+
+        if (String(tx.type || "").toLowerCase() === "given") {
+          setTextColor(COLORS.spendText);
+        } else {
+          setTextColor(COLORS.receivedText);
+        }
+
+        pdf.setFont("helvetica", "bold");
+
+        pdf.text(transactionLines, tableX + dateWidth + 3, y + 6);
+
+        /* -------------------------------------------------------
+       NOTE
+       ------------------------------------------------------- */
+
+        pdf.setFont("helvetica", "normal");
+
+        setTextColor(COLORS.darkGray);
+
+        pdf.text(noteLines, tableX + dateWidth + transactionWidth + 3, y + 6);
+
+        /* -------------------------------------------------------
+       AMOUNT
+       ------------------------------------------------------- */
+
+        setTextColor(COLORS.black);
+
+        pdf.setFont("helvetica", "bold");
+
+        pdf.text(
+          `AED ${money(tx.amount)}`,
+          tableX + dateWidth + transactionWidth + noteWidth + amountWidth - 3,
+          y + 6,
+          { align: "right" },
+        );
+
+        y += rowHeight;
+      });
+
+      /* =======================================================
+     EMPTY TRANSACTIONS
+     ======================================================= */
+
+      if (transactions.length === 0) {
+        const emptyHeight = 18;
+
+        setFillColor(COLORS.white);
+        setDrawColor(COLORS.border);
+
+        pdf.rect(tableX, y, contentWidth, emptyHeight, "FD");
+
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(9);
+
+        setTextColor(COLORS.gray);
+
+        pdf.text(
+          "No transactions found for this period.",
+          pageWidth / 2,
+          y + 11,
+          { align: "center" },
+        );
+
+        y += emptyHeight;
       }
 
-      pdf.setDrawColor(220);
-      pdf.line(15, y, 195, y);
+      /* =======================================================
+     FOOTER
+     ======================================================= */
 
-      y += 6;
-    });
+      const pageCount = pdf.getNumberOfPages();
 
-    pdf.setFontSize(9);
-    pdf.setTextColor(120);
+      for (let page = 1; page <= pageCount; page++) {
+        pdf.setPage(page);
 
-    pdf.text(`Generated: ${new Date().toLocaleDateString("en-GB")}`, 105, 285, {
-      align: "center",
-    });
+        setDrawColor(COLORS.border);
 
-    const fileName = `${r.person.replace(/\s+/g, "_")}'s_Statement.pdf`;
+        pdf.setLineWidth(0.4);
 
-    pdf.save(fileName);
-  }
-</script>
+        pdf.line(margin, pageHeight - 13, pageWidth - margin, pageHeight - 13);
+
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(8);
+
+        setTextColor(COLORS.gray);
+
+        /* Left side */
+
+        const today = new Date().toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        });
+
+        pdf.text(`Generated by Shahzad Hanif ${today}`, margin, pageHeight - 7);
+
+        /* Right side */
+
+        pdf.text(
+          `Page ${page} of ${pageCount}`,
+          pageWidth - margin,
+          pageHeight - 7,
+          { align: "right" },
+        );
+      }
+
+      /* =======================================================
+     SAVE PDF
+     ======================================================= */
+
+      const safePerson = String(r.person || "Person")
+        .trim()
+        .replace(/[^\w\-]+/g, "_");
+
+      const fileName = `${safePerson}_Statement.pdf`;
+
+      pdf.save(fileName);
+    }
+  </script>
+</html>
